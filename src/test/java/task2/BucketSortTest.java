@@ -6,9 +6,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -18,9 +22,9 @@ public class BucketSortTest {
     private BucketSort sorter;
 
     private static final int[] LARGE_INPUT = {
-        746, 371, 776, 321, 508, 731, 223, 287, 216, 920,
-        355, 900, 473, 714, 597, 134, 79, 674, 192, 306,
-        780, 476, 505, 954, 689, 828, 774, 589, 123, 742
+            746, 371, 776, 321, 508, 731, 223, 287, 216, 920,
+            355, 900, 473, 714, 597, 134, 79, 674, 192, 306,
+            780, 476, 505, 954, 689, 828, 774, 589, 123, 742
     };
 
     @BeforeAll
@@ -42,15 +46,15 @@ public class BucketSortTest {
         Arrays.sort(expected);
 
         int[] result = BucketSort.bucketSort(arr);
-        assertArrayEquals( expected,result, "массив должен быть отсортирован");
-        assertEquals(79,result[0]);
+        assertArrayEquals(expected, result, "массив должен быть отсортирован");
+        assertEquals(79, result[0]);
         assertEquals(954, result[result.length-1]);
     }
+
     @Test
     @DisplayName("2. проверка статистики для большой последовательности")
     public void testLargeArrayStats(){
         int[] arr = Arrays.copyOf(LARGE_INPUT, LARGE_INPUT.length);
-
         BucketSort.bucketSort(arr);
 
         assertEquals(1, stats.methodEnterCount);
@@ -62,81 +66,70 @@ public class BucketSortTest {
         assertTrue(stats.bucketSortCallsCount > 0, "должны быть вызовы сортировки корзин");
     }
 
+    @ParameterizedTest
+    @MethodSource("provideSimpleArrays")
+    @DisplayName("3. параметризованный тест: простые случаи сортировки")
+    public void testSimpleArraysSorting(int[] input, String description, int expectedDistributed, int expectedBuckets) {
+        int[] arr = Arrays.copyOf(input, input.length);
+        int[] expected = Arrays.copyOf(arr, arr.length);
+        Arrays.sort(expected);
+
+        BucketSort.bucketSort(arr);
+
+        assertArrayEquals(expected, arr, description + ": массив должен быть отсортирован");
+        assertEquals(expectedDistributed, stats.elementsDistributedCount, description + ": неверное количество распределённых элементов");
+        assertEquals(expectedBuckets, stats.bucketCreatedCount, description + ": неверное количество созданных корзин");
+    }
+
+    private static Stream<Arguments> provideSimpleArrays() {
+        return Stream.of(
+                Arguments.of(new int[]{}, "пустой массив", 0, 0),
+                Arguments.of(new int[]{42}, "один элемент", 1, 1),
+                Arguments.of(new int[]{1, 2, 3, 4, 5}, "уже отсортированный", 5, 5),
+                Arguments.of(new int[]{5, 4, 3, 2, 1}, "обратный порядок", 5, 5),
+                Arguments.of(new int[]{5, 5, 5, 5}, "одинаковые элементы", 4, 4)
+        );
+    }
+
     @Test
-    @DisplayName("3. пустой массив")
-    public void testEmptyArray() {
+    @DisplayName("4. пустой массив: проверка лога выхода")
+    public void testEmptyArrayLog() {
         int[] arr = {};
         BucketSort.bucketSort(arr);
 
+        assertTrue(stats.executionLog.contains("EXIT: Empty array"));
         assertEquals(1, stats.methodEnterCount);
         assertEquals(1, stats.methodExitCount);
-        assertEquals(0, stats.elementsDistributedCount);
-        assertTrue(stats.executionLog.contains("EXIT: Empty array"));
     }
 
-    @Test
-    @DisplayName("4. один элемент")
-    public void testSingleElement() {
-        int[] arr = {42};
-        BucketSort.bucketSort(arr);
-
-        assertArrayEquals(new int[]{42}, arr);
-        assertEquals(1, stats.elementsDistributedCount);
-        assertEquals(1, stats.bucketCreatedCount);
-    }
-
-    @Test
-    @DisplayName("5. уже отсортированный массив")
-    public void testAlreadySorted() {
-        int[] arr = {1, 2, 3, 4, 5};
-        int[] expected = {1, 2, 3, 4, 5};
-        BucketSort.bucketSort(arr);
-        assertArrayEquals(expected, arr);
-    }
-
-    @Test
-    @DisplayName("6. обратный порядок")
-    public void testReverseSorted() {
-        int[] arr = {5, 4, 3, 2, 1};
-        int[] expected = {1, 2, 3, 4, 5};
-        BucketSort.bucketSort(arr);
-        assertArrayEquals(expected, arr);
-    }
-
-    @Test
-    @DisplayName("7. одинаковые элементы")
-    public void testDuplicates() {
-        int[] arr = {5, 5, 5, 5};
-        int[] expected = {5, 5, 5, 5};
-        BucketSort.bucketSort(arr);
-        assertArrayEquals(expected, arr);
-        assertEquals(4, stats.elementsDistributedCount);
-    }
-
-    @Test
-    @DisplayName("8. проверка логов  (эталон)")
-    public void testExecutionSequence() {
-        int[] arr = {10, 5, 15};
-        BucketSort.bucketSort(arr);
-
+    @ParameterizedTest
+    @MethodSource("provideLogTestCases")
+    @DisplayName("5. параметризованный тест: проверка наличия ключевых логов")
+    public void testExecutionLogPresence(int[] input, int expectedCount) {
+        BucketSort.bucketSort(input);
         List<String> log = stats.executionLog;
 
-        assertTrue(log.get(0).contains("ENTER: bucketSort"));
-        assertTrue(log.get(log.size() - 1).contains("EXIT: bucketSort"));
+        assertTrue(log.get(0).contains("ENTER: bucketSort"), "Первая запись должна быть ENTER");
+        assertTrue(log.get(log.size() - 1).contains("EXIT: bucketSort"), "Последняя запись должна быть EXIT");
+        assertTrue(log.stream().anyMatch(s -> s.contains("INFO: min=")), "Должен быть лог min/max");
+        assertTrue(log.stream().anyMatch(s -> s.contains("CREATE_BUCKET")), "Должны быть созданы корзины");
+        assertTrue(log.stream().anyMatch(s -> s.contains("DISTRIBUTE")), "Должно быть распределение элементов");
+        assertTrue(log.stream().anyMatch(s -> s.contains("SORT_BUCKET")), "Должна быть сортировка корзин");
+        assertEquals(expectedCount, stats.elementsDistributedCount, "Неверное количество распределённых элементов");
+    }
 
-        boolean hasMinMax = log.stream().anyMatch(s -> s.contains("INFO: min="));
-        boolean hasCreate = log.stream().anyMatch(s -> s.contains("CREATE_BUCKET"));
-        boolean hasDistribute = log.stream().anyMatch(s -> s.contains("DISTRIBUTE"));
-        boolean hasSort = log.stream().anyMatch(s -> s.contains("SORT_BUCKET"));
-
-        assertTrue(hasMinMax);
-        assertTrue(hasCreate);
-        assertTrue(hasDistribute);
-        assertTrue(hasSort);
+    private static Stream<Arguments> provideLogTestCases() {
+        return Stream.of(
+                Arguments.of(new int[]{10, 5, 15}, 3),
+                Arguments.of(new int[]{1, 2, 3}, 3),
+                Arguments.of(new int[]{100, 50, 25, 75}, 4),
+                Arguments.of(new int[]{-5, 0, 5, -10, 10}, 5),
+                Arguments.of(new int[]{42}, 1)
+        );
     }
 
     @Test
-    @DisplayName("9. сравнение массивов маленький vs большой")
+    @DisplayName("6. сравнение массивов: маленький vs большой")
     public void testCompareSequences() {
         int[] small = {10, 20};
         BucketSort.ExecutionStats statsSmall = new BucketSort.ExecutionStats();
@@ -153,8 +146,47 @@ public class BucketSortTest {
         assertTrue(statsLarge.executionLog.size() > statsSmall.executionLog.size());
     }
 
+    @ParameterizedTest
+    @CsvSource({
+            "1, 1",
+            "2, 2",
+            "5, 5",
+            "10, 10",
+            "30, 30"
+    })
+    @DisplayName("7. параметризованный тест: bucketCount == array.length")
+    public void testBucketCountEqualsArrayLength(int arraySize, int expectedBuckets) {
+        int[] arr = new int[arraySize];
+        for (int i = 0; i < arraySize; i++) {
+            arr[i] = i * 10;
+        }
+        BucketSort.bucketSort(arr);
+        assertEquals(expectedBuckets, stats.bucketCreatedCount,
+                "Количество корзин должно равняться длине массива");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "0, 1, 1",
+            "1, 1, 1",
+            "10, 5, 5",
+            "100, 3, 3",
+            "-50, 4, 4"
+    })
+    @DisplayName("8. параметризованный тест: массив с одинаковыми элементами")
+    public void testUniformArray(int value, int size, int expectedDistributed) {
+        int[] arr = new int[size];
+        Arrays.fill(arr, value);
+        int[] expected = Arrays.copyOf(arr, size);
+
+        BucketSort.bucketSort(arr);
+
+        assertArrayEquals(expected, arr, "Массив с одинаковыми элементами должен остаться неизменным");
+        assertEquals(expectedDistributed, stats.elementsDistributedCount);
+    }
+
     @Test
-    @DisplayName("10. Вывод эталонного лога для отчета")
+    @DisplayName("9. Вывод эталонного лога для отчета")
     public void testPrintReferenceLog() {
         int[] arr = Arrays.copyOf(LARGE_INPUT, LARGE_INPUT.length);
         BucketSort.bucketSort(arr);
@@ -166,5 +198,34 @@ public class BucketSortTest {
         System.out.println("_____________________");
 
         assertTrue(stats.executionLog.size() > 0);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "1, 10, true",
+            "10, 1, false",
+            "5, 5, true",
+            "100, 50, false"
+    })
+    @DisplayName("10. параметризованный тест: монотонность статистики")
+    public void testStatsMonotonicity(int sizeA, int sizeB, boolean aLessThanB) {
+        int[] arrA = new int[sizeA];
+        int[] arrB = new int[sizeB];
+        for (int i = 0; i < sizeA; i++) arrA[i] = i;
+        for (int i = 0; i < sizeB; i++) arrB[i] = i;
+
+        BucketSort.ExecutionStats statsA = new BucketSort.ExecutionStats();
+        new BucketSort(statsA);
+        BucketSort.bucketSort(arrA);
+
+        BucketSort.ExecutionStats statsB = new BucketSort.ExecutionStats();
+        new BucketSort(statsB);
+        BucketSort.bucketSort(arrB);
+
+        if (aLessThanB) {
+            assertTrue(statsB.elementsDistributedCount >= statsA.elementsDistributedCount,
+                    "Статистика должна расти с размером массива");
+            assertTrue(statsB.bucketCreatedCount >= statsA.bucketCreatedCount);
+        }
     }
 }
